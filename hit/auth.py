@@ -95,4 +95,30 @@ async def verify_email(email: str, code: str) -> Dict[str, Any]:
     return await get_default_client().verify_email(email, code)
 
 
+async def enable_two_factor(email: str) -> Dict[str, Any]:
+    return await get_default_client().enable_two_factor(email)
+
+
+async def verify_two_factor(email: str, code: str) -> Dict[str, Any]:
+    return await get_default_client().verify_two_factor(email, code)
+
+
+async def oauth_url(provider: str) -> Dict[str, Any]:
+    return await get_default_client().oauth_url(provider)
+
+
+async def oauth_callback(provider: str, oauth_code: str) -> Dict[str, Any]:
+    return await get_default_client().oauth_callback(provider, oauth_code)
+
+
+async def config() -> Dict[str, Any]:
+    """Get module configuration."""
+    return await get_default_client().config()
+
+
+async def features() -> Dict[str, Any]:
+    """Get feature flags."""
+    return await get_default_client().features()
+
+
 auth = get_default_client()
