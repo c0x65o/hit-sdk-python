@@ -133,6 +133,7 @@ class HitClient:
             HitAPIError: Mapped error
         """
         status_code = error.response.status_code
+        response_data = None
         try:
             response_data = error.response.json()
             message = response_data.get("detail", str(error))
