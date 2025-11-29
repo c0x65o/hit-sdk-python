@@ -52,6 +52,11 @@ class EmailClient:
 
         return await self.client.get("/config")
 
+    async def features(self) -> Dict[str, Any]:
+        """Get feature flags."""
+
+        return await self.client.get("/features")
+
 
 _default_email_client: EmailClient | None = None
 

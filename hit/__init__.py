@@ -9,7 +9,10 @@ Example:
     new_count = await ping_pong.increment("test")
 """
 
-from hit import auth, email, ping_pong
+# Import client instances from their modules
+from hit import ping_pong
+from hit.auth import auth
+from hit.email import email
 
 __version__ = "1.0.0"
 

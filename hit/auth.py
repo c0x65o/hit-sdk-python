@@ -60,8 +60,13 @@ class AuthClient:
         payload = {"provider": provider, "oauth_code": oauth_code}
         return await self.client.post("/oauth/callback", json=payload)
 
-    async def features(self) -> Dict[str, Any]:
+    async def config(self) -> Dict[str, Any]:
+        """Get module configuration."""
         return await self.client.get("/config")
+
+    async def features(self) -> Dict[str, Any]:
+        """Get feature flags."""
+        return await self.client.get("/features")
 
 
 _default_auth_client: AuthClient | None = None
