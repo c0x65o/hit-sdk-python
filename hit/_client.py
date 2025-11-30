@@ -5,11 +5,14 @@ Provides common functionality for all service clients:
 - Timeout handling
 - Error mapping
 - Request/response logging
+- Automatic token injection
 """
 
 from typing import Any, Dict, Optional
 
 import httpx
+
+from ._token import get_token_manager
 
 
 class HitAPIError(Exception):
@@ -24,7 +27,7 @@ class HitAPIError(Exception):
 
 class HitClient:
     """Base HTTP client for Hit services.
-    
+
     Provides retry logic, error handling, and common headers.
     """
 
@@ -36,7 +39,7 @@ class HitClient:
         timeout: float = 30.0,
     ):
         """Initialize client.
-        
+
         Args:
             base_url: Base URL for service (e.g., "http://localhost:8099")
             namespace: Namespace for multi-tenancy
@@ -47,13 +50,13 @@ class HitClient:
         self.namespace = namespace
         self.api_key = api_key
         self.timeout = timeout
-        
+
         # Create async HTTP client
         self._client = httpx.AsyncClient(timeout=timeout)
-    
-    def _get_headers(self) -> Dict[str, str]:
-        """Get request headers.
-        
+
+    async def _get_headers(self) -> Dict[str, str]:
+        """Get request headers with automatic token injection.
+
         Returns:
             Headers dictionary
         """
@@ -61,74 +64,87 @@ class HitClient:
             "Content-Type": "application/json",
             "User-Agent": "hit-sdk-python/1.0.0",
         }
-        
+
         if self.namespace:
             headers["X-Hit-Namespace"] = self.namespace
-        
+
         if self.api_key:
             headers["X-Hit-API-Key"] = self.api_key
-        
+        else:
+            # Try to get project token automatically
+            token_manager = get_token_manager()
+            token = await token_manager.get_token()
+            if token:
+                headers["Authorization"] = f"Bearer {token}"
+
         return headers
-    
+
     async def get(self, path: str, params: Optional[Dict[str, Any]] = None) -> dict:
         """Make GET request.
-        
+
         Args:
             path: API path (e.g., "/counter/test")
             params: Query parameters
-        
+
         Returns:
             Response JSON
-        
+
         Raises:
             HitAPIError: On API error
         """
         url = f"{self.base_url}{path}"
-        headers = self._get_headers()
-        
+        headers = await self._get_headers()
+
         try:
             response = await self._client.get(url, headers=headers, params=params)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
-            self._handle_error(e)
+            self._handle_error(e)  # Raises HitAPIError, never returns
+            return {}  # Unreachable, but satisfies type checker
         except httpx.RequestError as e:
             raise HitAPIError(f"Request failed: {e}", 0) from e
-    
+
     async def post(
-        self, path: str, json: Optional[Dict[str, Any]] = None, data: Optional[Dict[str, Any]] = None
+        self,
+        path: str,
+        json: Optional[Dict[str, Any]] = None,
+        data: Optional[Dict[str, Any]] = None,
     ) -> dict:
         """Make POST request.
-        
+
         Args:
             path: API path
             json: JSON body
             data: Form data
-        
+
         Returns:
             Response JSON
-        
+
         Raises:
             HitAPIError: On API error
         """
         url = f"{self.base_url}{path}"
-        headers = self._get_headers()
-        
+        headers = await self._get_headers()
+
         try:
-            response = await self._client.post(url, headers=headers, json=json, data=data)
+            response = await self._client.post(
+                url, headers=headers, json=json, data=data
+            )
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
-            self._handle_error(e)
+            self._handle_error(e)  # Raises HitAPIError, never returns
+            return {}  # Unreachable, but satisfies type checker
         except httpx.RequestError as e:
             raise HitAPIError(f"Request failed: {e}", 0) from e
-    
+
     def _handle_error(self, error: httpx.HTTPStatusError) -> None:
         """Handle HTTP error.
-        
+
         Args:
             error: HTTP status error
-        
+
         Raises:
             HitAPIError: Mapped error
         """
@@ -139,10 +155,13 @@ class HitClient:
             message = response_data.get("detail", str(error))
         except Exception:
             message = str(error)
-        
-        raise HitAPIError(message, status_code, response_data if isinstance(response_data, dict) else None)
-    
+
+        raise HitAPIError(
+            message,
+            status_code,
+            response_data if isinstance(response_data, dict) else None,
+        )
+
     async def close(self):
         """Close HTTP client."""
         await self._client.aclose()
-
