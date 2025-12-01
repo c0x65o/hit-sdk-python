@@ -81,6 +81,24 @@ class PingPongClient:
         response = await self._client.post(f"/counter/{counter_id}/reset")
         return response["value"]
     
+    async def get_config(self) -> dict:
+        """Get ping-pong service configuration via /hit/config endpoint.
+        
+        Returns:
+            Configuration dictionary including module settings
+        """
+        response = await self._client.get("/hit/config")
+        return response
+    
+    async def version(self) -> dict:
+        """Get ping-pong service version via /hit/version endpoint.
+        
+        Returns:
+            Version dictionary with module name and version
+        """
+        response = await self._client.get("/hit/version")
+        return response
+    
     async def close(self):
         """Close client connection."""
         await self._client.close()
@@ -136,4 +154,24 @@ async def reset(counter_id: str) -> int:
     """
     client = _get_client()
     return await client.reset(counter_id)
+
+
+async def get_config() -> dict:
+    """Get ping-pong service configuration via /hit/config endpoint.
+    
+    Returns:
+        Configuration dictionary including module settings
+    """
+    client = _get_client()
+    return await client.get_config()
+
+
+async def version() -> dict:
+    """Get ping-pong service version via /hit/version endpoint.
+    
+    Returns:
+        Version dictionary with module name and version
+    """
+    client = _get_client()
+    return await client.version()
 
