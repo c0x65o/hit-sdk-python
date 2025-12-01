@@ -175,3 +175,7 @@ async def version() -> dict:
     client = _get_client()
     return await client.version()
 
+
+# Export default client instance for convenience
+ping_pong = _get_client()
+
