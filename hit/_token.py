@@ -1,6 +1,11 @@
 """Token management for Hit SDK authentication.
 
-Handles fetching and caching project tokens from CAC for SDK requests.
+Handles fetching and caching service/project tokens from CAC for SDK requests.
+
+Token Resolution Order:
+1. HIT_SERVICE_TOKEN (new per-service tokens with module/database ACL)
+2. HIT_PROJECT_TOKEN (legacy project-wide tokens, for backward compatibility)
+3. Explicit token passed in constructor
 """
 
 from __future__ import annotations
@@ -13,8 +18,9 @@ import httpx
 
 
 class TokenManager:
-    """Manages project tokens for SDK authentication.
+    """Manages service/project tokens for SDK authentication.
 
+    Prefers HIT_SERVICE_TOKEN (per-service with ACL) over HIT_PROJECT_TOKEN (legacy).
     Fetches tokens from CAC and caches them until expiration.
     """
 
@@ -24,6 +30,7 @@ class TokenManager:
         project_slug: Optional[str] = None,
         namespace: Optional[str] = None,
         project_token: Optional[str] = None,
+        service_token: Optional[str] = None,
     ):
         """Initialize token manager.
 
@@ -31,23 +38,38 @@ class TokenManager:
             cac_url: CAC base URL (defaults to HIT_CAC_URL env var)
             project_slug: Project slug (defaults to HIT_PROJECT_SLUG env var)
             namespace: Namespace (defaults to HIT_NAMESPACE env var or "shared")
-            project_token: Pre-configured project token (defaults to HIT_PROJECT_TOKEN env var)
+            project_token: Legacy project token (defaults to HIT_PROJECT_TOKEN env var)
+            service_token: Per-service token with ACL (defaults to HIT_SERVICE_TOKEN env var)
         """
         self.cac_url = (cac_url or os.getenv("HIT_CAC_URL", "")).rstrip("/")
         self.project_slug = project_slug or os.getenv("HIT_PROJECT_SLUG", "")
         self.namespace = namespace or os.getenv("HIT_NAMESPACE", "shared")
+        
+        # Prefer service token over project token (service token has ACL)
+        self._service_token = service_token or os.getenv("HIT_SERVICE_TOKEN")
         self._project_token = project_token or os.getenv("HIT_PROJECT_TOKEN")
+        
         self._cached_token: Optional[str] = None
         self._token_expires_at: Optional[float] = None
         self._http_client = httpx.AsyncClient(timeout=10.0)
 
     async def get_token(self) -> Optional[str]:
-        """Get a valid project token.
+        """Get a valid service or project token.
+
+        Token resolution order:
+        1. Explicitly provided service token (HIT_SERVICE_TOKEN)
+        2. Explicitly provided project token (HIT_PROJECT_TOKEN)
+        3. Cached token from previous fetch
+        4. Fetch from CAC (if configured)
 
         Returns:
-            Project token string, or None if not available
+            Token string, or None if not available
         """
-        # If explicitly provided, use it
+        # Prefer service token (new per-service with ACL)
+        if self._service_token:
+            return self._service_token
+        
+        # Fall back to project token (legacy)
         if self._project_token:
             return self._project_token
 
