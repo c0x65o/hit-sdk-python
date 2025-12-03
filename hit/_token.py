@@ -2,10 +2,14 @@
 
 Handles fetching and caching service/project tokens from CAC for SDK requests.
 
-Token Resolution Order:
-1. HIT_SERVICE_TOKEN (new per-service tokens with module/database ACL)
-2. HIT_PROJECT_TOKEN (legacy project-wide tokens, for backward compatibility)
-3. Explicit token passed in constructor
+Token Resolution Order (for local development):
+1. HIT_SERVICE_{SERVICE_NAME}_TOKEN (per-service token with method-level ACL)
+   Example: HIT_SERVICE_WEB_TOKEN, HIT_SERVICE_API_TOKEN
+2. HIT_SERVICE_TOKEN (generic service token)
+3. HIT_PROJECT_TOKEN (legacy project-wide tokens)
+4. Explicit token passed in constructor
+
+The HIT_SERVICE_NAME environment variable determines which service token to use.
 """
 
 from __future__ import annotations
@@ -20,8 +24,8 @@ import httpx
 class TokenManager:
     """Manages service/project tokens for SDK authentication.
 
-    Prefers HIT_SERVICE_TOKEN (per-service with ACL) over HIT_PROJECT_TOKEN (legacy).
-    Fetches tokens from CAC and caches them until expiration.
+    Prefers per-service tokens (HIT_SERVICE_{NAME}_TOKEN) which contain method-level
+    ACL, falling back to HIT_SERVICE_TOKEN then HIT_PROJECT_TOKEN (legacy).
     """
 
     def __init__(
@@ -31,6 +35,7 @@ class TokenManager:
         namespace: Optional[str] = None,
         project_token: Optional[str] = None,
         service_token: Optional[str] = None,
+        service_name: Optional[str] = None,
     ):
         """Initialize token manager.
 
@@ -39,14 +44,25 @@ class TokenManager:
             project_slug: Project slug (defaults to HIT_PROJECT_SLUG env var)
             namespace: Namespace (defaults to HIT_NAMESPACE env var or "shared")
             project_token: Legacy project token (defaults to HIT_PROJECT_TOKEN env var)
-            service_token: Per-service token with ACL (defaults to HIT_SERVICE_TOKEN env var)
+            service_token: Per-service token with ACL (defaults to HIT_SERVICE_{NAME}_TOKEN)
+            service_name: Service name for token lookup (defaults to HIT_SERVICE_NAME env var)
         """
         self.cac_url = (cac_url or os.getenv("HIT_CAC_URL", "")).rstrip("/")
         self.project_slug = project_slug or os.getenv("HIT_PROJECT_SLUG", "")
         self.namespace = namespace or os.getenv("HIT_NAMESPACE", "shared")
         
-        # Prefer service token over project token (service token has ACL)
-        self._service_token = service_token or os.getenv("HIT_SERVICE_TOKEN")
+        # Get service name to look up service-specific token
+        self._service_name = service_name or os.getenv("HIT_SERVICE_NAME")
+        
+        # Token resolution:
+        # 1. Per-service token (HIT_SERVICE_{NAME}_TOKEN) - contains method-level ACL
+        # 2. Generic service token (HIT_SERVICE_TOKEN)
+        # 3. Legacy project token (HIT_PROJECT_TOKEN)
+        if self._service_name:
+            service_token_var = f"HIT_SERVICE_{self._service_name.upper()}_TOKEN"
+            self._service_token = service_token or os.getenv(service_token_var) or os.getenv("HIT_SERVICE_TOKEN")
+        else:
+            self._service_token = service_token or os.getenv("HIT_SERVICE_TOKEN")
         self._project_token = project_token or os.getenv("HIT_PROJECT_TOKEN")
         
         self._cached_token: Optional[str] = None
