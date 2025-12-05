@@ -69,18 +69,18 @@ class AuthClient:
         return await self.client.get("/features")
 
 
-_default_auth_client: AuthClient | None = None
-
-
-def get_default_client() -> AuthClient:
-    global _default_auth_client
-    if not _default_auth_client:
-        _default_auth_client = AuthClient()
-    return _default_auth_client
+def _get_client() -> AuthClient:
+    """Create a new client with current environment settings.
+    
+    Note: We create a fresh client each time to pick up any environment
+    variable changes. This ensures service discovery works correctly
+    in Kubernetes where env vars may be injected after module import.
+    """
+    return AuthClient()
 
 
 async def register(email: str, password: str) -> Dict[str, Any]:
-    return await get_default_client().register(email, password)
+    return await _get_client().register(email, password)
 
 
 async def login(
@@ -88,37 +88,47 @@ async def login(
     password: Optional[str] = None,
     two_factor_code: Optional[str] = None,
 ) -> Dict[str, Any]:
-    return await get_default_client().login(email, password, two_factor_code)
+    return await _get_client().login(email, password, two_factor_code)
 
 
 async def verify_email(email: str, code: str) -> Dict[str, Any]:
-    return await get_default_client().verify_email(email, code)
+    return await _get_client().verify_email(email, code)
 
 
 async def enable_two_factor(email: str) -> Dict[str, Any]:
-    return await get_default_client().enable_two_factor(email)
+    return await _get_client().enable_two_factor(email)
 
 
 async def verify_two_factor(email: str, code: str) -> Dict[str, Any]:
-    return await get_default_client().verify_two_factor(email, code)
+    return await _get_client().verify_two_factor(email, code)
 
 
 async def oauth_url(provider: str) -> Dict[str, Any]:
-    return await get_default_client().oauth_url(provider)
+    return await _get_client().oauth_url(provider)
 
 
 async def oauth_callback(provider: str, oauth_code: str) -> Dict[str, Any]:
-    return await get_default_client().oauth_callback(provider, oauth_code)
+    return await _get_client().oauth_callback(provider, oauth_code)
 
 
 async def config() -> Dict[str, Any]:
     """Get module configuration."""
-    return await get_default_client().config()
+    return await _get_client().config()
 
 
 async def features() -> Dict[str, Any]:
     """Get feature flags."""
-    return await get_default_client().features()
+    return await _get_client().features()
 
 
-auth = get_default_client()
+class _LazyAuthClient:
+    """Lazy proxy that creates AuthClient on first attribute access.
+    
+    This ensures service discovery happens at request time, not import time.
+    """
+    
+    def __getattr__(self, name: str):
+        return getattr(_get_client(), name)
+
+
+auth = _LazyAuthClient()

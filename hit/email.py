@@ -58,14 +58,14 @@ class EmailClient:
         return await self.client.get("/features")
 
 
-_default_email_client: EmailClient | None = None
-
-
-def get_default_client() -> EmailClient:
-    global _default_email_client
-    if not _default_email_client:
-        _default_email_client = EmailClient()
-    return _default_email_client
+def _get_client() -> EmailClient:
+    """Create a new client with current environment settings.
+    
+    Note: We create a fresh client each time to pick up any environment
+    variable changes. This ensures service discovery works correctly
+    in Kubernetes where env vars may be injected after module import.
+    """
+    return EmailClient()
 
 
 async def send_email(
@@ -78,9 +78,7 @@ async def send_email(
     from_email: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Convenience function mirroring EmailClient.send."""
-
-    client = get_default_client()
-    return await client.send(
+    return await _get_client().send(
         to=to,
         subject=subject,
         text=text,
@@ -91,4 +89,46 @@ async def send_email(
     )
 
 
-email = get_default_client()
+async def send(
+    to: str | list[str],
+    subject: str,
+    text: Optional[str] = None,
+    html: Optional[str] = None,
+    template_id: Optional[str] = None,
+    template_variables: Optional[Dict[str, Any]] = None,
+    from_email: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Send an email."""
+    return await _get_client().send(
+        to=to,
+        subject=subject,
+        text=text,
+        html=html,
+        template_id=template_id,
+        template_variables=template_variables,
+        from_email=from_email,
+    )
+
+
+async def config() -> Dict[str, Any]:
+    """Fetch module configuration."""
+    return await _get_client().config()
+
+
+async def features() -> Dict[str, Any]:
+    """Get feature flags."""
+    return await _get_client().features()
+
+
+class _LazyEmailClient:
+    """Lazy proxy that creates EmailClient on first attribute access.
+    
+    This ensures service discovery happens at request time, not import time.
+    """
+    
+    def __getattr__(self, name: str):
+        return getattr(_get_client(), name)
+
+
+# Export lazy client for backwards compatibility with `from hit.email import email`
+email = _LazyEmailClient()

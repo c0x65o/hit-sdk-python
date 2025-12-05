@@ -1,6 +1,6 @@
 [project]
 name = "hit-sdk"
-version = "1.0.11"
+version = "1.0.12"
 description = "Hit platform SDK for Python"
 readme = "README.md"
 requires-python = ">=3.11"

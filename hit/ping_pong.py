@@ -104,16 +104,14 @@ class PingPongClient:
         await self._client.close()
 
 
-# Default client instance
-_default_client: Optional[PingPongClient] = None
-
-
 def _get_client() -> PingPongClient:
-    """Get or create default client."""
-    global _default_client
-    if _default_client is None:
-        _default_client = PingPongClient()
-    return _default_client
+    """Create a new client with current environment settings.
+    
+    Note: We create a fresh client each time to pick up any environment
+    variable changes. This ensures service discovery works correctly
+    in Kubernetes where env vars may be injected after module import.
+    """
+    return PingPongClient()
 
 
 # Module-level convenience functions
@@ -126,8 +124,7 @@ async def get_counter(counter_id: str) -> int:
     Returns:
         Current counter value
     """
-    client = _get_client()
-    return await client.get_counter(counter_id)
+    return await _get_client().get_counter(counter_id)
 
 
 async def increment(counter_id: str) -> int:
@@ -139,8 +136,7 @@ async def increment(counter_id: str) -> int:
     Returns:
         New counter value
     """
-    client = _get_client()
-    return await client.increment(counter_id)
+    return await _get_client().increment(counter_id)
 
 
 async def reset(counter_id: str) -> int:
@@ -152,8 +148,7 @@ async def reset(counter_id: str) -> int:
     Returns:
         Reset counter value (always 0)
     """
-    client = _get_client()
-    return await client.reset(counter_id)
+    return await _get_client().reset(counter_id)
 
 
 async def get_config() -> dict:
@@ -162,8 +157,7 @@ async def get_config() -> dict:
     Returns:
         Configuration dictionary including module settings
     """
-    client = _get_client()
-    return await client.get_config()
+    return await _get_client().get_config()
 
 
 async def version() -> dict:
@@ -172,10 +166,19 @@ async def version() -> dict:
     Returns:
         Version dictionary with module name and version
     """
-    client = _get_client()
-    return await client.version()
+    return await _get_client().version()
 
 
-# Export default client instance for convenience
-ping_pong = _get_client()
+class _LazyPingPongClient:
+    """Lazy proxy that creates PingPongClient on first attribute access.
+    
+    This ensures service discovery happens at request time, not import time.
+    """
+    
+    def __getattr__(self, name: str):
+        return getattr(_get_client(), name)
+
+
+# Export lazy client for backwards compatibility with `from hit.ping_pong import ping_pong`
+ping_pong = _LazyPingPongClient()
 
