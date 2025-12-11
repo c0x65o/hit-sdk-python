@@ -1,15 +1,13 @@
 """Token management for Hit SDK authentication.
 
-Handles fetching and caching service/project tokens from CAC for SDK requests.
+Handles fetching and caching service tokens from CAC for SDK requests.
 
-Token Resolution Order (for local development):
-1. HIT_SERVICE_{SERVICE_NAME}_TOKEN (per-service token with method-level ACL)
-   Example: HIT_SERVICE_WEB_TOKEN, HIT_SERVICE_API_TOKEN
-2. HIT_SERVICE_TOKEN (generic service token)
-3. HIT_PROJECT_TOKEN (legacy project-wide tokens)
-4. Explicit token passed in constructor
+Token Resolution Order:
+1. HIT_SERVICE_TOKEN (service token with method-level ACL and service name in claims)
+2. Explicit token passed in constructor
 
-The HIT_SERVICE_NAME environment variable determines which service token to use.
+Service tokens encode the service name in their 'svc' claim, so modules can
+reverse-lookup which service is making the request.
 """
 
 from __future__ import annotations
@@ -22,10 +20,9 @@ import httpx
 
 
 class TokenManager:
-    """Manages service/project tokens for SDK authentication.
+    """Manages service tokens for SDK authentication.
 
-    Prefers per-service tokens (HIT_SERVICE_{NAME}_TOKEN) which contain method-level
-    ACL, falling back to HIT_SERVICE_TOKEN then HIT_PROJECT_TOKEN (legacy).
+    Uses HIT_SERVICE_TOKEN which contains method-level ACL and service name in claims.
     """
 
     def __init__(
@@ -33,7 +30,6 @@ class TokenManager:
         cac_url: Optional[str] = None,
         project_slug: Optional[str] = None,
         namespace: Optional[str] = None,
-        project_token: Optional[str] = None,
         service_token: Optional[str] = None,
         service_name: Optional[str] = None,
     ):
@@ -43,51 +39,37 @@ class TokenManager:
             cac_url: CAC base URL (defaults to HIT_CAC_URL env var)
             project_slug: Project slug (defaults to HIT_PROJECT_SLUG env var)
             namespace: Namespace (defaults to HIT_NAMESPACE env var or "shared")
-            project_token: Legacy project token (defaults to HIT_PROJECT_TOKEN env var)
-            service_token: Per-service token with ACL (defaults to HIT_SERVICE_{NAME}_TOKEN)
-            service_name: Service name for token lookup (defaults to HIT_SERVICE_NAME env var)
+            service_token: Service token with ACL (defaults to HIT_SERVICE_TOKEN env var)
+            service_name: Service name (defaults to HIT_SERVICE_NAME env var, encoded in token claims)
         """
         self.cac_url = (cac_url or os.getenv("HIT_CAC_URL", "")).rstrip("/")
         self.project_slug = project_slug or os.getenv("HIT_PROJECT_SLUG", "")
         self.namespace = namespace or os.getenv("HIT_NAMESPACE", "shared")
         
-        # Get service name to look up service-specific token
+        # Get service name (encoded in token claims for reverse lookup)
         self._service_name = service_name or os.getenv("HIT_SERVICE_NAME")
         
-        # Token resolution:
-        # 1. Per-service token (HIT_SERVICE_{NAME}_TOKEN) - contains method-level ACL
-        # 2. Generic service token (HIT_SERVICE_TOKEN)
-        # 3. Legacy project token (HIT_PROJECT_TOKEN)
-        if self._service_name:
-            service_token_var = f"HIT_SERVICE_{self._service_name.upper()}_TOKEN"
-            self._service_token = service_token or os.getenv(service_token_var) or os.getenv("HIT_SERVICE_TOKEN")
-        else:
-            self._service_token = service_token or os.getenv("HIT_SERVICE_TOKEN")
-        self._project_token = project_token or os.getenv("HIT_PROJECT_TOKEN")
+        # Token resolution: Use HIT_SERVICE_TOKEN (service name encoded in token claims)
+        self._service_token = service_token or os.getenv("HIT_SERVICE_TOKEN")
         
         self._cached_token: Optional[str] = None
         self._token_expires_at: Optional[float] = None
         self._http_client = httpx.AsyncClient(timeout=10.0)
 
     async def get_token(self) -> Optional[str]:
-        """Get a valid service or project token.
+        """Get a valid service token.
 
         Token resolution order:
         1. Explicitly provided service token (HIT_SERVICE_TOKEN)
-        2. Explicitly provided project token (HIT_PROJECT_TOKEN)
-        3. Cached token from previous fetch
-        4. Fetch from CAC (if configured)
+        2. Cached token from previous fetch
+        3. Fetch from CAC (if configured)
 
         Returns:
             Token string, or None if not available
         """
-        # Prefer service token (new per-service with ACL)
+        # Use service token (contains ACL and service name in claims)
         if self._service_token:
             return self._service_token
-        
-        # Fall back to project token (legacy)
-        if self._project_token:
-            return self._project_token
 
         # Check cached token
         if self._cached_token and self._token_expires_at:
