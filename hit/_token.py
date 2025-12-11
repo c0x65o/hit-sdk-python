@@ -45,13 +45,13 @@ class TokenManager:
         self.cac_url = (cac_url or os.getenv("HIT_CAC_URL", "")).rstrip("/")
         self.project_slug = project_slug or os.getenv("HIT_PROJECT_SLUG", "")
         self.namespace = namespace or os.getenv("HIT_NAMESPACE", "shared")
-        
+
         # Get service name (encoded in token claims for reverse lookup)
         self._service_name = service_name or os.getenv("HIT_SERVICE_NAME")
-        
+
         # Token resolution: Use HIT_SERVICE_TOKEN (service name encoded in token claims)
         self._service_token = service_token or os.getenv("HIT_SERVICE_TOKEN")
-        
+
         self._cached_token: Optional[str] = None
         self._token_expires_at: Optional[float] = None
         self._http_client = httpx.AsyncClient(timeout=10.0)
@@ -120,4 +120,3 @@ def get_token_manager() -> TokenManager:
     if _token_manager is None:
         _token_manager = TokenManager()
     return _token_manager
-
